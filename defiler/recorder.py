@@ -19,6 +19,7 @@ def fix_builtin(s):
 
 wallclock = (time.clock if sys.platform == "win32" else time.time)
 
+RETURN_EVENTS = ("return", "c_exception")
 
 class Defiler(object):
     def __init__(self, name, **kwargs):
@@ -33,45 +34,34 @@ class Defiler(object):
         self._write()
 
     def _write(self):
+        TIME_SCALE = 1000
+
         with file(self.name + "_%d.dfl.json" % time.time(), "wb") as out_file:
-            out_file.write("{\"t\": %d, \"e\":[" % time.time())
+            out_file.write("{\"t\": %d, \"tscale\": %d, \"e\":[" % (time.time(), TIME_SCALE))
             level = 0
             for i, (event, etime, filename, lineno, funcname) in enumerate(self.events):
                 if i == 0 and event == "return":  # This is likely exiting from __enter__
                     continue
                 if filename:
-                    funcname = "%s:%s:%s" % (filename, lineno, funcname)
+                    funcname = "%s^%s^%s" % (filename, lineno, funcname)
                 else:
                     funcname = fix_builtin(funcname)
 
-                if event == "return":
+
+                if event in RETURN_EVENTS:
                     level -= 1
+                    if level <= 0:
+                        break
 
                 out_file.write(
-                    '["%s",%d,%d,"%s"],\n' % (event, int(etime * 1000000), level, funcname.replace("\\", "/")))
+                    '["%s",%f,%d,"%s"],\n' % (event, etime * TIME_SCALE * 1000, level, funcname.replace("\\", "/")))
 
                 if event == "call":
                     level += 1
 
             out_file.write("null]}")
 
-    def dump(self):
-        start_time = self.events[0][1]
-        end_time = self.events[-1][1]
-
-        n = 0
-
-        for event, time, filename, lineno, funcname in self.events:
-            if event == "return":
-                n -= 1
-            print "   " * n, event, time, filename, lineno, funcname
-            if event == "call":
-                n += 1
-
-        print end_time - start_time
-
     def _trace(self, frame, event, arg):
-
         if event == "c_call" or event == "c_return":
             event = event[2:]
             self.events.append((event, wallclock(), "", "", str(arg)))
