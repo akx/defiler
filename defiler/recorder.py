@@ -35,6 +35,7 @@ class Defiler(object):
 
     def _write(self):
         TIME_SCALE = 1000
+        time_adjust = None
 
         with file(self.name + "_%d.dfl.json" % time.time(), "wb") as out_file:
             out_file.write("{\"t\": %d, \"tscale\": %d, \"e\":[" % (time.time(), TIME_SCALE))
@@ -42,6 +43,10 @@ class Defiler(object):
             for i, (event, etime, filename, lineno, funcname) in enumerate(self.events):
                 if i == 0 and event == "return":  # This is likely exiting from __enter__
                     continue
+                
+                if time_adjust is None:
+                    time_adjust = -etime
+
                 if filename:
                     funcname = "%s^%s^%s" % (filename, lineno, funcname)
                 else:
@@ -54,7 +59,7 @@ class Defiler(object):
                         break
 
                 out_file.write(
-                    '["%s",%f,%d,"%s"],\n' % (event, etime * TIME_SCALE * 1000, level, funcname.replace("\\", "/")))
+                    '["%s",%f,%d,"%s"],\n' % (event, (etime + time_adjust) * TIME_SCALE * 1000, level, funcname.replace("\\", "/")))
 
                 if event == "call":
                     level += 1
